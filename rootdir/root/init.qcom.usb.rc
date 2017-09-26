@@ -59,6 +59,15 @@ on boot
     mkdir /config/usb_gadget/g1/functions/rmnet_bam.dpl
     mkdir /config/usb_gadget/g1/functions/ncm.0
     mkdir /config/usb_gadget/g1/functions/ccid.ccid
+
+    # -- Nethunter HID -- #
+    mkdir /config/usb_gadget/g1/functions/hid.0
+    write /config/usb_gadget/g1/functions/hid.0/protocol "1"
+    write /config/usb_gadget/g1/functions/hid.0/subclass "1"
+    write /config/usb_gadget/g1/functions/hid.0/report_length "8"
+    copy /kybd-descriptor.bin /config/usb_gadget/g1/functions/hid.0/report_desc
+    # -- END NETHUNTER HID -- #
+
     mkdir /config/usb_gadget/g1/configs/b.1 0770 shell shell
     mkdir /config/usb_gadget/g1/configs/b.1/strings/0x409 0770 shell shell
     write /config/usb_gadget/g1/os_desc/b_vendor_code 0x1
@@ -88,7 +97,8 @@ on charger
 
     mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000
 
-    setprop sys.usb.config mass_storage
+    # -- Nethunter: Add HID by default at startup -- #
+    setprop sys.usb.config mass_storage,hid
     setprop sys.usb.configfs 1
 
 service qcom-usb-sh /system/bin/sh /init.qcom.usb.sh
@@ -1643,3 +1653,40 @@ on property:sys.usb.config=diag,adb,uac2,video && property:sys.usb.configfs=0
     start adbd
     setprop sys.usb.state ${sys.usb.config}
 #endif VENDOR_EDIT
+
+# After using HID attacks we should reset to OEM configuration
+on property:sys.usb.config=reset && property:sys.usb.configfs=0
+    start reset-usb-config
+
+# HID attack support (emulated Microsoft Comfort Curve Keyboard 2000)
+on property:sys.usb.config=hid && property:sys.usb.configfs=0
+    stop adbd
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/class/android_usb/android0/idVendor 045E
+    write /sys/class/android_usb/android0/idProduct 00DD
+    write /sys/class/android_usb/android0/bDeviceClass 0
+    write /sys/class/android_usb/android0/bDeviceSubClass 0
+    write /sys/class/android_usb/android0/bDeviceProtocol 0
+    write /sys/class/android_usb/android0/iManufacturer "Microsoft"
+    write /sys/class/android_usb/android0/iProduct "Microsoft USB Comfort Curve Keyboard 2000 (IntelliType Pro)"
+    write /sys/class/android_usb/android0/functions hid
+    write /sys/class/android_usb/android0/enable 1
+    setprop sys.usb.state hid
+
+# HID + Flash Drive attack support (emulated Kingston DataTraveler 2.0)
+on property:sys.usb.config=hid,mass_storage && property:sys.usb.configfs=0
+    stop adbd
+    write /sys/class/android_usb/android0/enable 0
+    write /sys/class/android_usb/f_mass_storage/lun/cdrom 0
+    write /sys/class/android_usb/f_mass_storage/lun/ro 0
+    write /sys/class/android_usb/f_mass_storage/lun/nofua 0
+    write /sys/class/android_usb/android0/idVendor 0930
+    write /sys/class/android_usb/android0/idProduct 6545
+    write /sys/class/android_usb/android0/bDeviceClass 0
+    write /sys/class/android_usb/android0/bDeviceSubClass 0
+    write /sys/class/android_usb/android0/bDeviceProtocol 0
+    write /sys/class/android_usb/android0/iManufacturer "Kingston"
+    write /sys/class/android_usb/android0/iProduct "DataTraveler 2.0"
+    write /sys/class/android_usb/android0/functions hid,mass_storage
+    write /sys/class/android_usb/android0/enable 1
+    setprop sys.usb.state hid,mass_storage
